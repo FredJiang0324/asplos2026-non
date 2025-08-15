@@ -1,0 +1,26 @@
+[user]
+    name = PageANN Contributor
+    email = anon@example.com
+
+[core]
+    autocrlf = false
+    filemode = false
+    excludesfile = .gitignore
+
+[init]
+    defaultBranch = main
+
+[push]
+    default = simple
+
+[color]
+    ui = auto
+
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    ci = commit
+    unstage = reset HEAD --
+    last = log -1 HEAD
+    visual = !gitk

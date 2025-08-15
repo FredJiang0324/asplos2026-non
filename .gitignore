@@ -1,0 +1,59 @@
+# Build directories
+build/
+target/
+dist/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Rust
+target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+
+# Logs
+*.log
+*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Data files (usually large)
+*.bin
+*.fvec
+*.ivec
+*.index
+*.pq
+
+# Personal files
+.gitconfig
+.gitignore_old
+.gitattributes_old
