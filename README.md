@@ -20,20 +20,26 @@ This design shortens traversal paths, aligns I/O with SSD page size, reduces ind
 ## Build Instructions
 
 ### 1) Install Dependencies (Linux)
+```bash
 sudo apt install make cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-all-dev
+```
 
 ### 2) Install Intel MKL
+```bash
 # Ubuntu 20.04+
 sudo apt install libmkl-full-dev
 
 # Earlier versions (tested 2019.4-070 and 2022.1.2.146)
 wget https://registrationcenter-download.intel.com/akdlm/irc_nas/18487/l_BaseKit_p_2022.1.2.146.sh
 sudo sh l_BaseKit_p_2022.1.2.146.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+```
 
 ### 3) Build
+```bash
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j
+```
 
 ### Requirements
 - CMake ≥ 3.10
@@ -46,110 +52,53 @@ make -j
 ## Example Usage
 
 ### 1) Build a PageANN Index
-Use the following command to build an index. Replace <dataset_path> and <index_output_prefix> to fit your environment.
+Use the following command to build an index. Replace `<dataset_path>` and `<index_output_prefix>` to fit your environment.
 
-- If you select **SIFT100M**, set:
-  --data_path data/sift100m/learn.100M.u8bin
+If you select **SIFT100M**, set:
+```bash
+--data_path data/sift100m/learn.100M.u8bin
+```
 
-SIFT1M example:
-generate_page_graph \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --data_path data/sift1M/sift.1M.u8bin \
-  --index_path_prefix data/sift1M/sift1m_index_R100_L100_PQ12_PageANN \
-  --R 100 \
-  --min_degree_per_node 70 \
-  --num_PQ_chunks 12 \
-  --memBudgetInGB 0.10 \
-  --full_ooc false \
-  --use_lsh false
+**SIFT1M example**
+```bash
+generate_page_graph   --data_type uint8   --dist_fn l2   --data_path data/sift1M/sift.1M.u8bin   --index_path_prefix data/sift1M/sift1m_index_R100_L100_PQ12_PageANN   --R 100   --min_degree_per_node 70   --num_PQ_chunks 12   --memBudgetInGB 0.10   --full_ooc false   --use_lsh false
+```
 
-General form (replace paths as needed):
-generate_page_graph \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --data_path <dataset_path> \
-  --index_path_prefix <index_output_prefix> \
-  --R 100 \
-  --min_degree_per_node 70 \
-  --num_PQ_chunks 12 \
-  --memBudgetInGB 2.0 \
-  --full_ooc false \
-  --use_lsh false
+**General form (replace paths as needed)**
+```bash
+generate_page_graph   --data_type uint8   --dist_fn l2   --data_path <dataset_path>   --index_path_prefix <index_output_prefix>   --R 100   --min_degree_per_node 70   --num_PQ_chunks 12   --memBudgetInGB 2.0   --full_ooc false   --use_lsh false
+```
 
-SIFT100M example:
-generate_page_graph \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --data_path data/sift100m/learn.100M.u8bin \
-  --index_path_prefix data/sift100m/sift100m_index_R100_L100_PQ12_PageANN \
-  --R 100 \
-  --min_degree_per_node 70 \
-  --num_PQ_chunks 12 \
-  --memBudgetInGB 2.0 \
-  --full_ooc false \
-  --use_lsh false
+**SIFT100M example**
+```bash
+generate_page_graph   --data_type uint8   --dist_fn l2   --data_path data/sift100m/learn.100M.u8bin   --index_path_prefix data/sift100m/sift100m_index_R100_L100_PQ12_PageANN   --R 100   --min_degree_per_node 70   --num_PQ_chunks 12   --memBudgetInGB 2.0   --full_ooc false   --use_lsh false
+```
 
 ---
 
 ### 2) Compute Ground Truth
-SIFT1M example:
-compute_groundtruth \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --base_file data/sift1M/sift.1M.u8bin \
-  --query_file data/sift1M/query10K.u8bin \
-  --origin_gt_file data/sift1M/query_1M_gt100 \
-  --K 100 \
-  --index_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN \
-  --gt_file data/sift1M/sift1M_gt_new_K100
+**SIFT1M example**
+```bash
+compute_groundtruth   --data_type uint8   --dist_fn l2   --base_file data/sift1M/sift.1M.u8bin   --query_file data/sift1M/query10K.u8bin   --origin_gt_file data/sift1M/query_1M_gt100   --K 100   --index_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN   --gt_file data/sift1M/sift1M_gt_new_K100
+```
 
-SIFT100M example:
-compute_groundtruth \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --base_file data/sift100m/learn.100M.u8bin \
-  --query_file data/sift100m/query.public.10K.u8bin \
-  --origin_gt_file data/sift100m/gt_new_K100 \
-  --K 100 \
-  --index_prefix data/sift100m/ooc/sift100m_index_R110_L100_PQ12_PGD_PageANN \
-  --gt_file data/sift100m/ooc/gt_new_K100
+**SIFT100M example**
+```bash
+compute_groundtruth   --data_type uint8   --dist_fn l2   --base_file data/sift100m/learn.100M.u8bin   --query_file data/sift100m/query.public.10K.u8bin   --origin_gt_file data/sift100m/gt_new_K100   --K 100   --index_prefix data/sift100m/ooc/sift100m_index_R110_L100_PQ12_PGD_PageANN   --gt_file data/sift100m/ooc/gt_new_K100
+```
 
 ---
 
 ### 3) Search the PageANN Index
-General form:
-search_disk_index \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --index_path_prefix <index_output_prefix> \
-  --pq_path_prefix <pq_prefix> \
-  --query_file <query_vectors> \
-  --gt_file <groundtruth_file> \
-  --result_path <search_results> \
-  -K 100 \
-  -L 100 \
-  -W 10 \
-  -T 15 \
-  --num_nodes_to_cache 0 \
-  --use_lsh false \
-  --use_subset_lsh false \
-  --radius 0
+**General form**
+```bash
+search_disk_index   --data_type uint8   --dist_fn l2   --index_path_prefix <index_output_prefix>   --pq_path_prefix <pq_prefix>   --query_file <query_vectors>   --gt_file <groundtruth_file>   --result_path <search_results>   -K 100   -L 100   -W 10   -T 15   --num_nodes_to_cache 0   --use_lsh false   --use_subset_lsh false   --radius 0
+```
 
-SIFT1M example:
-search_disk_index \
-  --data_type uint8 \
-  --dist_fn l2 \
-  --index_path_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN \
-  --pq_path_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN_PQ12 \
-  --query_file data/sift1M/query10K.u8bin \
-  --gt_file data/sift1M/sift1M_gt_new_K100 \
-  --result_path data/sift1M/res \
-  -K 100 -L 100 -W 10 -T 15 \
-  --num_nodes_to_cache 0 \
-  --use_lsh false \
-  --use_subset_lsh false \
-  --radius 0
+**SIFT1M example**
+```bash
+search_disk_index   --data_type uint8   --dist_fn l2   --index_path_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN   --pq_path_prefix data/sift1M/sift1m_index_R100_L100_PGD_PageANN_PQ12   --query_file data/sift1M/query10K.u8bin   --gt_file data/sift1M/sift1M_gt_new_K100   --result_path data/sift1M/res   -K 100 -L 100 -W 10 -T 15   --num_nodes_to_cache 0   --use_lsh false   --use_subset_lsh false   --radius 0
+```
 
 ---
 
@@ -158,23 +107,29 @@ search_disk_index \
 PageANN adapts cache/layout to the given memory budget configured at **build time** via `--memBudgetInGB`. Tune search knobs (`-L`, `-W`, `-T`, `--num_nodes_to_cache`) per budget and hardware.
 
 ### A) Very Tight Memory (e.g., 0.5 GB)
-Build:
+**Build**
+```bash
 ... --memBudgetInGB 0.5 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-Search:
+```
+**Search**
 - Use smaller `-W` (8–10) and moderate `-L` (80–100).
 - Keep `--num_nodes_to_cache 0` or a small positive value if RAM allows.
 
-### B) Moderate Memory (e.g., 2 GB)  [SIFT100M example path]
-Build:
+### B) Moderate Memory (e.g., 2 GB)  _[SIFT100M example path]_
+**Build**
+```bash
 ... --data_path data/sift100m/learn.100M.u8bin --memBudgetInGB 2.0 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-Search:
+```
+**Search**
 - `-W 10–16`, `-L 100–150`, `-T 15–24` depending on CPU.
 - Consider `--num_nodes_to_cache > 0` to reduce latency if RAM permits.
 
 ### C) Larger Memory (e.g., 8 GB+)
-Build:
+**Build**
+```bash
 ... --memBudgetInGB 8.0 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-Search:
+```
+**Search**
 - Increase `--num_nodes_to_cache` for lower latency.
 - Slightly higher `-W` can improve recall; adjust `-L` for your target recall/latency.
 
@@ -187,18 +142,12 @@ Search:
 ---
 
 ## PQ Reordering for a New Budget
-### This generates new PQ data to match a changed memory budget.
-### Parameters: <program> <data_type> <base_data_path> <pq_output_prefix> <target_num_chunks>
-generate_reorder_pq \
-  uint8 \
-  data/sift100m/learn.100M.u8bin \
-  data/sift100m/sift100m_index_R110_L100_PQ12_PGD_PageANN \
-  29
+This generates new PQ data to match a changed memory budget.
 
----
-
-## Notes
-- Some CLI flags are kept for binary compatibility; defaults above align with the design choices in the paper.
+**Parameters**: `<program> <data_type> <base_data_path> <pq_output_prefix> <target_num_chunks>`
+```bash
+generate_reorder_pq   uint8   data/sift100m/learn.100M.u8bin   data/sift100m/sift100m_index_R110_L100_PQ12_PGD_PageANN   29
+```
 
 ---
 
