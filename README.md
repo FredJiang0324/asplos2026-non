@@ -1,18 +1,18 @@
-y# PageANN: Page-based Approximate Nearest Neighbor Search
+# PageANN: Page-based Approximate Nearest Neighbor Search
 
-This repository contains the implementation of PageANN, a page-based approach for approximate nearest neighbor search.
+PageANN is a disk-based ANNS framework that organizes computation and storage at **page granularity**. It maps logical page-nodes directly to physical SSD pages, co-designs the **graph structure** and **on-disk layout**, and introduces lightweight in-memory routing with dynamic memory management. The design shortens traversal paths, aligns I/O with SSD page size, reduces indexing overhead, and improves throughput under tight memory budgets.
 
-## Overview
+> In experiments, PageANN achieves >50% latency improvement over state-of-the-art disk-based ANNS across diverse memory ratios while maintaining comparable recall (details in paper).
 
-PageANN extends the DiskANN framework with page-based optimizations and LSH (Locality Sensitive Hashing) integration for improved search performance and memory efficiency.
+---
 
 ## Key Features
+- **Page-based graph**: logical nodes ≙ SSD pages; fewer hops, I/O-aligned traversal.
+- **Co-designed SSD layout**: stores representative vectors and embedded inter-page topology to avoid extra reads.
+- **Dynamic memory strategy**: adapts cache & layout to memory budgets; lightweight routing for faster search.
+- **Scales to large datasets**: supports SIFT1M/100M and similar.
+- **Configurable PQ** and search knobs.
 
-- Page-based graph construction and traversal
-- LSH integration for efficient similarity search
-- Memory budget optimization
-- Support for large-scale datasets (Sift1M, Sift100M)
-- Configurable PQ (Product Quantization) parameters
 
 
 ## Building
