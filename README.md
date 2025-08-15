@@ -187,8 +187,8 @@ Search:
 ---
 
 ## PQ Reordering for a New Budget
-# This generates new PQ data to match a changed memory budget.
-# Parameters: <program> <data_type> <base_data_path> <pq_output_prefix> <target_num_chunks>
+### This generates new PQ data to match a changed memory budget.
+### Parameters: <program> <data_type> <base_data_path> <pq_output_prefix> <target_num_chunks>
 generate_reorder_pq \
   uint8 \
   data/sift100m/learn.100M.u8bin \
