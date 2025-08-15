@@ -10,7 +10,7 @@ PageANN is a disk-based ANNS framework that organizes computation and storage at
 - **Page-based graph**: logical nodes ≙ SSD pages; fewer hops, I/O-aligned traversal.
 - **Co-designed SSD layout**: stores representative vectors and embedded inter-page topology to avoid extra reads.
 - **Dynamic memory strategy**: adapts cache & layout to memory budgets; lightweight routing for faster search.
-- **Scales to large datasets**: supports SIFT1M/100M and similar.
+- **Scales to large datasets**: supports SIFT1M/100M/1B and similar.
 - **Configurable PQ** and search knobs.
 
 
