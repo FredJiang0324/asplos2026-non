@@ -102,33 +102,6 @@ search_disk_index   --data_type uint8   --dist_fn l2   --index_path_prefix data/
 
 ---
 
-## Memory Budgets: Quick Recipes
-
-PageANN adapts cache/layout to the given memory budget configured at **build time** via `--memBudgetInGB`. Tune search knobs (`-L`, `-W`, `-T`, `--num_nodes_to_cache`) per budget and hardware.
-
-### A) Very Tight Memory (e.g., 0.5 GB)
-**Build**
-```bash
-... --memBudgetInGB 0.5 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-```
-**Search**
-- Use smaller `-W` (8–10) and moderate `-L` (80–100).
-- Keep `--num_nodes_to_cache 0` or a small positive value if RAM allows.
-
-### B) Moderate Memory (e.g., 2 GB)  _[SIFT100M example path]_
-**Build**
-```bash
-... --data_path data/sift100m/learn.100M.u8bin --memBudgetInGB 2.0 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-```
-**Search**
-- `-W 10–16`, `-L 100–150`, `-T 15–24` depending on CPU.
-- Consider `--num_nodes_to_cache > 0` to reduce latency if RAM permits.
-
-### C) Larger Memory (e.g., 8 GB+)
-**Build**
-```bash
-... --memBudgetInGB 8.0 --num_PQ_chunks 12 --R 100 --min_degree_per_node 70 --full_ooc false --use_lsh false
-```
 **Search**
 - Increase `--num_nodes_to_cache` for lower latency.
 - Slightly higher `-W` can improve recall; adjust `-L` for your target recall/latency.
