@@ -834,10 +834,7 @@ template <typename T>
 size_t mergeNodesIntoPage(const uint64_t nnodes_per_sector, std::shared_ptr<InMemOOCGraphStore> graph_store, std::shared_ptr<InMemOOCDataStore<T>> data_store, const uint32_t npts, const uint32_t ndim, const std::string index_prefix_path, const uint32_t page_graph_degree, const uint32_t R, const uint32_t num_pq_chunk, std::vector<std::vector<uint32_t>>& mergedNodes, std::vector<uint32_t>& nodeToPageMap, std::vector<uint32_t>& new_to_original_map)
 {
     const uint64_t expected_num_pages = (npts + nnodes_per_sector - 1) / nnodes_per_sector;
-
     diskann::cout << "Section Length: " << defaults::SECTOR_LEN << "B" << std::endl;
-    // diskann::cout << "max_nbr_space: " << max_nbr_space << "B" << std::endl;
-    // diskann::cout << "max_node_len: " << max_node_len << "B" << std::endl;
     diskann::cout << "nnodes_per_sector: " << nnodes_per_sector << std::endl;
     diskann::cout << "Expected number of pages in total: " << expected_num_pages << std::endl;
     
@@ -848,229 +845,112 @@ size_t mergeNodesIntoPage(const uint64_t nnodes_per_sector, std::shared_ptr<InMe
     mergedNodes.reserve(expected_num_pages);
     nodeToPageMap.reserve(npts);
     nodeToPageMap.assign(npts, std::numeric_limits<uint32_t>::max());  // Fill with -1
-    tsl::robin_set<uint32_t> unMergedNodesSet;
-    unMergedNodesSet.reserve(npts);
-    // Use insert range when possible
-    for (uint32_t i = 0; i < npts; ++i) {
-        unMergedNodesSet.insert(i);
-    }
 
-    //loading 
-    bool preload = false;
-    if (preload)
-    {   
-        std::string preload_file = "temp_mergedNodes_and_map.bin";
-        std::ifstream in(preload_file, std::ios::binary);
-        uint64_t mergedSize, nnodes_per_sector_load;
-        in.read(reinterpret_cast<char*>(&mergedSize), sizeof(mergedSize));
-        in.read(reinterpret_cast<char*>(&nnodes_per_sector_load), sizeof(nnodes_per_sector_load));
-        if (nnodes_per_sector != nnodes_per_sector_load){
-            diskann::cout << "Error: nnodes_per_sector doesn't match" << std::endl;
-        }
+    std::vector<uint8_t> unmergedBitmap; // size = N
+    unmergedBitmap.assign(npts, 1);  // every node is initially unmerged
+    uint32_t last_unmerged_min = 0;      // smallest possible unmerged ID
+    uint32_t unmergedCount = npts;      // all are unmerged at the start
 
-        mergedNodes.resize(mergedSize, std::vector<uint32_t>(nnodes_per_sector));
-        for (size_t i = 0; i < mergedSize; ++i) {
-            in.read(reinterpret_cast<char*>(mergedNodes[i].data()), nnodes_per_sector * sizeof(uint32_t));
-        }
-
-        uint64_t mapSize;
-        in.read(reinterpret_cast<char*>(&mapSize), sizeof(mapSize));
-        if (mapSize > npts) {
-            throw std::runtime_error("mapSize in file exceeds expected npts.");
-        }
-        //nodeToPageMap.resize(mapSize);
-        in.read(reinterpret_cast<char*>(nodeToPageMap.data()), mapSize * sizeof(uint32_t));
-
-        in.close();
-
-        for (const auto& inVec : mergedNodes) {
-            for (uint32_t id : inVec) {
-                unMergedNodesSet.erase(id);
+    auto mark_merged = [&](uint32_t id) {
+        if (unmergedBitmap[id]) {
+            unmergedBitmap[id] = 0;
+            unmergedCount--;
+            if (id == last_unmerged_min) {
+                while (last_unmerged_min < unmergedBitmap.size() &&
+                    unmergedBitmap[last_unmerged_min] == 0) {
+                    last_unmerged_min++;
+                }
             }
         }
+    };
 
-        pageCount = static_cast<uint32_t>(mergedNodes.size());
-        if (!unMergedNodesSet.empty()){
-            auto it = unMergedNodesSet.begin();
-            currNode = *it;
-        }else{
-            diskann::cout << "Loaded full mergedNodes and nodeToPageMap. Skip mergeNodesIntoPage procedure." << std::endl;
-            return pageCount;
-        }
-    }
+    auto is_unmerged = [&](uint32_t id) {
+        return unmergedBitmap[id] != 0;
+    };
 
-    //diskann::cout << "part 2" << std::endl;
-    //std::vector<float> mergeMeanDistances;//use float to represent distance
-    //mergeMeanDistances.reserve(expected_num_pages);
-    size_t beyond_fixed_hops_search_nbrs = 0;
+    auto get_next_unmerged = [&]() {
+        return last_unmerged_min;
+    };
+
+    auto has_unmerged_left = [&]() {
+        return unmergedCount > 0;
+    };
+
     size_t num_hops_initial = 2;
     uint32_t numInitialNodes = R * R;
-    while (numInitialNodes < 10000){
+    uint32_t maxNumCandidatesForMaxHop = 1 + R + numInitialNodes;
+    while (numInitialNodes < 500 && npts < 1000000000){
         numInitialNodes *= R;
         num_hops_initial++;
+        maxNumCandidatesForMaxHop += numInitialNodes;
     }
-    diskann::cout << "Num of "<< num_hops_initial << " hops of nodes: " << numInitialNodes << std::endl;
-    //uint32_t maxHops = 6;
-    uint32_t maxHops = static_cast<uint32_t>(8 / std::log10(R)); // max_candidates = 100,000,000 which is 10 pow 8
-    if (preload)
-        maxHops = num_hops_initial + 1;
-    diskann::cout << "maxHops: " << maxHops << std::endl;
+    diskann::cout << "Num of "<< num_hops_initial << " hops of nodes: " << maxNumCandidatesForMaxHop << std::endl;
+
     size_t log_interval = 1000;
     auto start_time = std::chrono::high_resolution_clock::now();
-    size_t num99percentPages = static_cast<size_t>(std::round(expected_num_pages * 99.5 / 100));
-    while (!unMergedNodesSet.empty()) {
-        std::vector<uint32_t> groupedNodes;
-        groupedNodes.reserve(nnodes_per_sector);
+    size_t num90percentPages = static_cast<size_t>(std::round(expected_num_pages * 90.0 / 100));
 
-        // diskann::cout << "Curr node to process: " << currNode <<  std::endl;
-        // diskann::cout << "unMergedNodesSet left: " << unMergedNodesSet.size() <<  std::endl;
-        if ((pageCount == num99percentPages) & (preload == false)){
-            diskann::cout << "      Saving the first " << pageCount << " merged pages" <<  std::endl;
-            std::ofstream out("temp_mergedNodes_and_map.bin", std::ios::binary);
+//pre-allocated reuse data
+    std::vector<uint32_t> groupedNodes;
+    groupedNodes.reserve(nnodes_per_sector);
+    tsl::robin_set<uint32_t> candidate_nbr_set;
+    candidate_nbr_set.reserve(maxNumCandidatesForMaxHop); 
+    std::vector<uint32_t> new_nbrs_candidates;
+    new_nbrs_candidates.reserve(numInitialNodes); 
 
-            // Save mergedNodes
-            uint64_t mergedSize = mergedNodes.size();
-            if (pageCount != mergedSize){
-                diskann::cout << "Page count doesn't match" <<  std::endl;
+    while (has_unmerged_left()) {
+        groupedNodes.clear();
+        candidate_nbr_set.clear();
+        new_nbrs_candidates.clear();
+
+        //if this is the last page, we just put the rest unMergedNodesSet within this page
+        if (unmergedCount <= nnodes_per_sector){
+            while(has_unmerged_left()){
+                    uint32_t id = get_next_unmerged();
+                    mark_merged(id);
+                    groupedNodes.push_back(id);         
+                    nodeToPageMap[id] = pageCount;   
             }
-            out.write(reinterpret_cast<const char*>(&mergedSize), sizeof(mergedSize));
-            out.write(reinterpret_cast<const char*>(&nnodes_per_sector), sizeof(nnodes_per_sector));
-            for (size_t i = 0; i < mergedSize; ++i) {
-                out.write(reinterpret_cast<const char*>(mergedNodes[i].data()), nnodes_per_sector * sizeof(uint32_t));
+
+            // Fill remaining slots with the first node in groupedNodes if needed
+            while (groupedNodes.size() < nnodes_per_sector) {
+                groupedNodes.push_back(groupedNodes[0]);
             }
 
-            // Save nodeToPageMap
-            uint64_t mapSize = nodeToPageMap.size();
-            out.write(reinterpret_cast<const char*>(&mapSize), sizeof(mapSize));
-            out.write(reinterpret_cast<const char*>(nodeToPageMap.data()), mapSize * sizeof(uint32_t));
-
-            out.close();
-            maxHops = num_hops_initial + 1;
+            mergedNodes.push_back(groupedNodes);
+            pageCount++;
+            break;
         }
-
-        if (unMergedNodesSet.size() <= numInitialNodes){
-            if (pageCount % log_interval == 0 || pageCount == expected_num_pages - 1){
-                //diskann::cout << pageCount << " pages have been processed" <<  std::endl;
-                float percent = 100.0f * pageCount / expected_num_pages;
-                //float data_miss_per_page_process = 1.0f * data_store->_cache_miss / pageCount;
-                //float graph_miss_per_page_process = 1.0f * graph_store->_cache_miss / pageCount;
-                auto now = std::chrono::high_resolution_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
-                // float elapsed_f = static_cast<float>(elapsed);
-                // float estimated_total = elapsed_f / (pageCount / expected_num_pages);
-                // float remaining = estimated_total - elapsed_f;
-
-                diskann::cout << "\rProgress within " << num_hops_initial << " hops: "
-                << std::setw(6) << std::fixed << std::setprecision(2) << percent << "% ("<< pageCount << "/" << expected_num_pages << "), "
-                //<< "avg cache miss of data buffer: " << std::fixed << std::setprecision(2) << data_miss_per_page_process
-                //<< ", avg cache miss of graph buffer: " << std::fixed << std::setprecision(2) << graph_miss_per_page_process << ", "
-                << "time used: " << static_cast<int>(elapsed) << "s"
-                << std::flush;
-            }
-
-            //if this is the last page, we just put the rest unMergedNodesSet within this page
-            if (unMergedNodesSet.size() <= nnodes_per_sector){
-                // Loop through each node in unMergedNodesSet
-                for (const auto& nodeID : unMergedNodesSet) {
-                    groupedNodes.push_back(nodeID);         
-                    nodeToPageMap[nodeID] = pageCount;   
-                }
-
-                // Fill remaining slots with the first node in groupedNodes if needed
-                while (groupedNodes.size() < nnodes_per_sector) {
-                    groupedNodes.push_back(groupedNodes[0]);
-                }
-
-                mergedNodes.push_back(groupedNodes);
-                pageCount++;
-                break;
-            }
-            else{
-                unMergedNodesSet.erase(currNode);
-                groupedNodes.push_back(currNode);
-                nodeToPageMap[currNode] = pageCount;
-                // if (pageCount > 14280000)
-                //     diskann::cout << "Left nodes: " << unMergedNodesSet.size() << std::endl;
-                //sorting the left nodes within the set 
-                std::vector<uint32_t> candidate_nbrs(unMergedNodesSet.begin(), unMergedNodesSet.end());
-                auto distances = data_store->computeDist(currNode, candidate_nbrs);//max size: 64-1 or 64*64-1
-                // if (pageCount > 14283000)
-                //     diskann::cout << "Distance computed" <<  std::endl;
-                std::vector<std::pair<uint32_t, float>> id_dist_pairs;
-                for (uint32_t i = 0; i < candidate_nbrs.size(); ++i) {
-                    id_dist_pairs.emplace_back(candidate_nbrs[i], distances[i]);
-                }
-
-                std::sort(id_dist_pairs.begin(), id_dist_pairs.end(), 
-                        [](const auto& a, const auto& b) { return a.second < b.second; });
-                // if (pageCount > 14280000)
-                //         diskann::cout << "Sorted" <<  std::endl;
-                //get the top nnodes_per_sector - 1
-                for (const auto& id_dist : id_dist_pairs) {
-                    uint32_t id = id_dist.first;
-
-                    if (groupedNodes.size() == nnodes_per_sector){
-                        ///MARK: we will definitely reach here or it wont be here
-                        nextNode = id;
-                        break;
-                    }
-
-                    groupedNodes.push_back(id);
-                    nodeToPageMap[id] = pageCount;
-                    unMergedNodesSet.erase(id);
-                }
-                mergedNodes.push_back(groupedNodes);
-                pageCount++;
-
-                //if nextNode still -1, i.e., not updated -- it means there is no node left anymore
-                if (nextNode == -1){
-                    auto it = unMergedNodesSet.begin();
-                    currNode = *it;
-                }else{
-                    currNode = nextNode;
-                }
-                nextNode = -1;//reset flag the nextNode to -1
-
-                // if (pageCount > 14280000)
-                //     diskann::cout << "Next node to read: " << currNode <<  std::endl;
-                continue;
-            }
-        } //end of numInitialNodes
-
-        unMergedNodesSet.erase(currNode);
+           
+        mark_merged(currNode);
         //diskann::cout << "part 0" << std::endl;
-        int hops = num_hops_initial; //64^3 -- 4 is not doable -- too much time -- TODO: test at 2?? distance will increase for sure
-        tsl::robin_set<uint32_t> frontier = {currNode};
-        tsl::robin_set<uint32_t> has_expanded_nbrs_set;
+        int hops = num_hops_initial;
+        std::vector<uint32_t> frontier = {currNode};//nbrs to expand
         
         for (int hop = 1; hop <= hops; ++hop) {
-            tsl::robin_set<uint32_t> new_frontier; //we cannot modify the set while iterating it
+            new_nbrs_candidates.clear();  // reuse buffer
             //diskann::cout << "Hop: " << hop << std::endl;
-            for (const auto& n : frontier){
-                if (has_expanded_nbrs_set.insert(n).second){//inserting successfully means it is not visited before
-                    //here is the real frontier
-                    auto newNbrs = graph_store->get_ooc_neighbours(n);
-                    new_frontier.insert(newNbrs.begin(), newNbrs.end());//even this newnbrs has been merged, we still need to consider it since it is useful as frontier
+            for (const auto& v : frontier){
+                auto nbrs = graph_store->get_ooc_neighbours(v);
+                for (const auto& nbr : nbrs) {
+                    if (candidate_nbr_set.insert(nbr).second) {//inserting successfully means it has not been added as frontier before
+                        new_nbrs_candidates.push_back(nbr);
+                    }
                 }
             }
-
-            // Update the neighbors set for the next hop
-            frontier = std::move(new_frontier);
+            // Update new nbrs to expand for next hop
+            frontier.swap(new_nbrs_candidates);   // avoids realloc/copy
         }
         //diskann::cout << "part 1" << std::endl;
-        //now 
-        tsl::robin_set<uint32_t> candidate_nbr_set = has_expanded_nbrs_set;
-        //has_expanded_nbrs_set + plus the newest frontier nodes
-        candidate_nbr_set.insert(frontier.begin(), frontier.end());
 
         //remove all alreadyMergedNodes first --- because this version has no tolerance of duplicates
         std::vector<uint32_t> candidate_nbrs;
+        //this could be biggest overhead if not handle well!!!!!
         for (const auto& n : candidate_nbr_set) {
-            if (unMergedNodesSet.find(n) != unMergedNodesSet.end()) {
+            if (is_unmerged(n)) {
                 candidate_nbrs.push_back(n);
             } 
         }
-///TODO: this might need to loaded partially into memory
         //diskann::cout << "part 2" << std::endl;
         auto distances = data_store->computeDist(currNode, candidate_nbrs);//max size: 64-1 or 64*64-1
         //diskann::cout << "part 3" << std::endl;
@@ -1097,81 +977,14 @@ size_t mergeNodesIntoPage(const uint64_t nnodes_per_sector, std::shared_ptr<InMe
 
             groupedNodes.push_back(id);
             nodeToPageMap[id] = pageCount;
-            unMergedNodesSet.erase(id);
+            mark_merged(id);
         }
-        //diskann::cout << "part 4" << std::endl;
-        //size_t fur_hops = hops + 1;//record the max hop -- begin with 3 and end with maxHops
-        size_t fur_hops = hops;//record the max hop
-
-        //still use the previous frontier //nextNode == -1 means the nextNode not assigned yet -- this is to get the next closest node as nextNode even if groupedNodes is full
-        //while(groupedNodes.size() < nnodes_per_sector && fur_hops <= maxHops){
-        //without setting a maxHops, it may never exit this while loop
-        while(groupedNodes.size() < nnodes_per_sector && fur_hops < maxHops){
-            fur_hops++;
-            //get frontier
-            tsl::robin_set<uint32_t> new_frontier; //we cannot modify the set while iterating it
-
-            for (const auto& n : frontier){
-                if (has_expanded_nbrs_set.insert(n).second){//inserting successfully means it is not visited before
-                    auto newNbrs = graph_store->get_ooc_neighbours(n);
-                    new_frontier.insert(newNbrs.begin(), newNbrs.end());
-                }
-            }
-
-            // Update the neighbors set for the next hop
-            frontier = std::move(new_frontier);
-
-            //remove all already processed nodes
-            std::vector<uint32_t> new_candidate_nbrs;
-
-            for (const auto& n : frontier) {
-                //no need to filter using has_expanded_nbrs_set becuase: if it arrives here, it means all previous candidate set which including has_expanded_nbrs_set 
-                // don't have enough unMergedNode
-                if (unMergedNodesSet.find(n) != unMergedNodesSet.end()) {
-                    new_candidate_nbrs.push_back(n);
-                } 
-            }
-
-            //sort and add to groupedNodes
-            distances = data_store->computeDist(currNode, new_candidate_nbrs);//max size: 64-1 or 64*64-1
-
-            std::vector<std::pair<uint32_t, float>> new_id_dist_pairs;
-            for (uint32_t i = 0; i < new_candidate_nbrs.size(); ++i) {
-                new_id_dist_pairs.emplace_back(new_candidate_nbrs[i], distances[i]);
-            }
-
-            std::sort(new_id_dist_pairs.begin(), new_id_dist_pairs.end(), 
-                    [](const auto& a, const auto& b) { return a.second < b.second; });
-
-            for (const auto& id_dist : new_id_dist_pairs) {
-                uint32_t id = id_dist.first;
-///may get stuck here because some nodes are simplely not reachable by the current searching scope (our searching scope also get pruned and thus becomes smaller)
-                if (groupedNodes.size() == nnodes_per_sector){
-                    ///MARK: actually this maynot be reached 
-                    ///MARK: may not get updated -- because it may have no neighbor left with these hops distances
-                    nextNode = id;//if nextNode is still -1, it means there is no extra node left, we need start with a random one from the left
-                    break;
-                }
-
-                groupedNodes.push_back(id);
-                nodeToPageMap[id] = pageCount;
-                unMergedNodesSet.erase(id);
-            }
-        }//end of while loop of further explore
-
-        //if (fur_hops > (hops + 1)){
-        if (fur_hops > hops){
-            beyond_fixed_hops_search_nbrs++;
-            //std::cout << "Total of hops of this beyond hops search and mergying: " << fur_hops << std::endl;
-        }
-        //diskann::cout << "end of expanding neighbors" << std::endl;
-        ///MARK: if still not get enough nodes within maxHops; assign random nodes
-        while (groupedNodes.size() < nnodes_per_sector){
-            auto it = unMergedNodesSet.begin();
-            uint32_t id = *it;
+        
+        while (groupedNodes.size() < nnodes_per_sector){    
+            uint32_t id = get_next_unmerged();
+            mark_merged(id);
             groupedNodes.push_back(id);
             nodeToPageMap[id] = pageCount;
-            unMergedNodesSet.erase(id);
             //diskann::cout << "still not filled within " << maxHops <<" hops" <<std::endl;
         }
 
@@ -1199,8 +1012,7 @@ size_t mergeNodesIntoPage(const uint64_t nnodes_per_sector, std::shared_ptr<InMe
 
         //there are two cases where nextNode is still -1: 1) no extra node left within maxHops; 2) no enough even candidates left within the maxHops
         if (nextNode == -1){
-            auto it = unMergedNodesSet.begin();
-            currNode = *it;
+            currNode = get_next_unmerged();
         }else{
             currNode = nextNode;
         }
@@ -1211,7 +1023,6 @@ size_t mergeNodesIntoPage(const uint64_t nnodes_per_sector, std::shared_ptr<InMe
         //diskann::cout << "Next node to read: " << nextNode <<  std::endl;
     }//end of while loop
     std::cout <<std::endl;
-    std::cout << "Time of beyond "<< num_hops_initial <<"-hops search and mergy: " << beyond_fixed_hops_search_nbrs << std::endl;
     std::cout << "Actually pages Count: " << mergedNodes.size() << std::endl;
     std::cout << "NodeToPageMap size: " << nodeToPageMap.size() << std::endl;
 
@@ -1712,7 +1523,7 @@ int build_page_graph(const std::string &index_prefix_path, const std::string &da
     const std::string final_index_prefix_path = index_prefix_path + "_PGD" + std::to_string(page_graph_degree) + "_PageANN";
     
     bool mergeClosesNodes = true;
-    bool skipWritingFinalIndexIntoDisk = mergeClosesNodes;
+    bool skipWritingFinalIndexIntoDisk = false;
     if(mergeClosesNodes){
         mergeNodesIntoPage((uint64_t)nnodes_per_page, graph_store, data_store, (uint32_t)points_num, (uint32_t)dim, final_index_prefix_path, page_graph_degree, R, num_pq_chunks_32, mergedNodes, nodeToPageMap, new_to_original_map);
     }else{
@@ -1754,7 +1565,8 @@ int build_page_graph(const std::string &index_prefix_path, const std::string &da
 
     std::unique_ptr<uint8_t[]> reorder_pq_data_buff;
     tsl::robin_set<uint32_t> cached_PQ_nodes;
-    float scale = (std::abs(pq_cache_ratio - 1.0f) < 1e-5f) ? 1.0f : 0.75f;
+    //float scale = (std::abs(pq_cache_ratio - 1.0f) < 1e-5f) ? 1.0f : 0.75f;
+    float scale = 1.0f;
     float scaled_pq_cache_ratio = scale * pq_cache_ratio;
     std::cout << std::fixed << std::setprecision(4) << "Scaled PQ cache ratio: " << scaled_pq_cache_ratio << std::endl;
     create_disk_layout(skipWritingFinalIndexIntoDisk, reorder_pq_data_buff, cached_PQ_nodes, (uint64_t)nnodes_per_page, scaled_pq_cache_ratio, graph_store, data_store, dim, page_graph_degree, pq_compressed_all_nodes_path, final_outputFile, mergedNodes, nodeToPageMap, page_size);

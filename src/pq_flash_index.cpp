@@ -457,7 +457,7 @@ void PQFlashIndex<T, LabelT>::generate_cache_list_from_sample_queries(std::strin
         return;
     }
 
-    bool load_from_top_pages_file = true;
+    bool load_from_top_pages_file = false;
     if(load_from_top_pages_file){
         std::ifstream top_pages_reader("top_pages.bin", std::ios::binary);
         if (!top_pages_reader) {
