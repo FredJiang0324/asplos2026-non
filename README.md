@@ -10,7 +10,7 @@ For larger datasets such as **SIFT100M**, the same commands apply with path chan
 
 Reviewers may start directly from a provided **1M index and ground-truth** file.
 
-**General form**
+General form
 search_disk_index \
   --data_type uint8 \
   --dist_fn l2 \
@@ -25,7 +25,7 @@ search_disk_index \
   --use_subset_lsh false \
   --radius 0
 
-**SIFT100M example**
+SIFT100M example
 search_disk_index \
   --data_type uint8 \
   --dist_fn l2 \
@@ -47,7 +47,7 @@ search_disk_index \
 If reviewers wish to reproduce the index and ground-truth, the following commands apply.
 
 ### a) Build a PageANN Index
-**General form**
+General form
 generate_page_graph \
   --data_type uint8 \
   --dist_fn l2 \
@@ -60,7 +60,7 @@ generate_page_graph \
   --full_ooc false \
   --use_lsh false
 
-**SIFT100M example**
+SIFT100M example
 generate_page_graph \
   --data_type uint8 \
   --dist_fn l2 \
@@ -76,7 +76,7 @@ generate_page_graph \
 ---
 
 ### b) Compute Ground Truth
-**General form**
+General form
 compute_groundtruth \
   --data_type uint8 \
   --dist_fn l2 \
@@ -87,7 +87,7 @@ compute_groundtruth \
   --index_prefix <index_prefix> \
   --gt_file <output_gt>
 
-**SIFT100M example**
+SIFT100M example
 compute_groundtruth \
   --data_type uint8 \
   --dist_fn l2 \
@@ -101,6 +101,6 @@ compute_groundtruth \
 ---
 
 ## Notes
-- Provided 1M index and ground-truth allow reviewers to **directly test search** without full preprocessing.  
+- Provided 1M index and ground-truth allow reviewers to directly test search without full preprocessing.  
 - For larger datasets, replace the paths accordingly.  
 - Some CLI flags are kept for binary compatibility; defaults above match the paper settings.
